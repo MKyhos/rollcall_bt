@@ -20,13 +20,13 @@
 getDocs <- function(start, end, 
                     limit = 100, 
                     noFilterSet = FALSE,
-                    sleep = 1) {
+                    sleep = .8) {
   # Convert Time Inputs:
   startTime <- start %>%
-    as_datetime() %>%
+    lubridate::as_datetime() %>%
     as.integer() 
   endTime <- end %>%
-    as_datetime() %>%
+    lubridate::as_datetime() %>%
     as.integer()
   startTime <- startTime * 1000
   endTime   <- endTime * 1000
@@ -35,29 +35,29 @@ getDocs <- function(start, end,
   result <- httr::GET(url = glue(
     "https://www.bundestag.de/ajax/filterlist/de/parlament/plenum/abstimmung/liste/462112-462112/h_fe32507b06aea68a4083e6ae6fa00280?enddate={endTime}&endfield=date&limit={limit}&noFilterSet={noFilterSet}&startdate={startTime}&startfield=date"
   )) %>%
-    content() %>%
+    httr::content() %>%
     html_nodes("tr")
   
   desc <- result %>%
     html_nodes("div") %>%
     html_nodes("p") %>%
     html_text() %>%
-    tibble(date = str_extract(., "\\d{2}\\.\\d{2}\\.\\d{4}") %>%
-             dmy(),
-           title = str_extract(., "(?<=:\\s).*$")) %>%
+    tibble(date = stringr::str_extract(., "\\d{2}\\.\\d{2}\\.\\d{4}") %>%
+             lubridate::dmy(),
+           title = stringr::str_extract(., "(?<=:\\s).*$")) %>%
     select(title, date) %>%
     bind_cols(.,
               result %>% 
                 html_nodes("a") %>%
                 html_attr("href") %>%
                 tibble(links = .) %>%
-                mutate(type  = case_when(str_detect(links, ".*\\.pdf$") ~ "pdf",
-                                         TRUE ~ "xlsx"),
+                mutate(type  = case_when(stringr::str_detect(links, ".*\\.pdf$") ~ "url_pdf",
+                                         TRUE ~ "url_xlsx"),
                        links = paste0("https://www.bundestag.de", links)) %>%
                 pivot_wider(names_from  = type, 
                             values_from = links,
                             values_fn   = list(links = list)) %>%
-                unnest(cols = c(pdf, xlsx))) 
+                unnest(cols = c(url_pdf, url_xlsx))) 
   
   # Download documents
   
@@ -69,35 +69,49 @@ getDocs <- function(start, end,
   
   for (i in 1:nrow(desc)) {
     # Init Url paths
-    url_pdf <- desc$pdf[i]
-    url_xls <- desc$xlsx[i]
+    url_pdf <- desc$url_pdf[i]
+    url_xls <- desc$url_xlsx[i]
     
     tryCatch( # Retrieve pdf.
       {
-        ls_pdf[[i]] <- pdftools::pdf_text(url_pdf)[1]
+        ls_pdf[[i]] <- tibble(
+          txt = map_chr(
+            .x = strsplit(pdftools::pdf_text(url_pdf)[[1]], "\\n")[[1]], 
+            .f = trimws
+          )
+        )
       }, 
-      error = function(cond) return(NULL),
+      error   = function(cond) return(NULL),
       warning = function(cond) return(NA)
     )
     
     tryCatch( # Retrieve xlsx.
       {
-        if (str_detect(url_xls, "\\.xlsx$")) {
-          GET(url_xls, 
-              write_disk(tf <- tempfile(fileext = ".xlsx")),
-              invisible())
+        if (stringr::str_detect(url_xls, "\\.xlsx$")) {
+          httr::GET(url_xls, 
+                    httr::write_disk(tf <- tempfile(fileext = ".xlsx")),
+                    invisible())
           ls_xlsx[[i]] <- readxl::read_xlsx(tf)
         } else {
-          GET(url_xls, write_disk(tf <- tempfile(fileext = ".xls")))
+          httr::GET(url_xls, 
+                    httr::write_disk(tf <- tempfile(fileext = ".xls")),
+                    invisible())
           ls_xlsx[[i]] <- readxl::read_xls(tf)
         }
       },
-      error = function(cond) return(NULL),
+      error   = function(cond) return(NULL),
       warning = function(cond) return(NA)
     )
     Sys.sleep(sleep)
     p$tick()$print()
   }
-  return(list(pdf  = ls_pdf,
-              xlsx = ls_xlsx))
+  
+  # Return result object (tibble with nested columns).
+  result <- mutate(desc,
+                   txt = ls_pdf,
+                   dta = ls_xlsx)
+  result
 }
+
+
+
