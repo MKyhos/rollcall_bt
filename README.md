@@ -1,2 +1,7 @@
-# rollcall_bt
-Just playing around with German roll call data.
+# Roll Call Data | German Federal Parliament
+
+## Main Idea
+
+## Data
+
+## Overview Analysis

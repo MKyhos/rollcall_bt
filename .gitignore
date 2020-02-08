@@ -2,6 +2,15 @@
 .Rhistory
 .Rapp.history
 
+# Folders and files not to be commited:
+  /bräununger2016
+  /manuals
+  /readings
+  /dta
+  /dta_raw
+  syllabus_legpol.pdf
+  legpol_notes.md
+
 # Session Data files
 .RData
 
@@ -18,7 +27,9 @@
 /*.Rcheck/
 
 # RStudio files
-.Rproj.user/
+#.Rproj.user/
+
+.Rprofile
 
 # produced vignettes
 vignettes/*.html
@@ -37,3 +48,4 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+.Rproj.user
