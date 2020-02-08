@@ -1,10 +1,11 @@
 
-#
-
+# Ignoring everything by default.
 /*
 
+# Exceptions:
 !/src
 !rc_bt.Rproj
 !README.md
 !/reports
 !.gitignore
+.Rproj.user
