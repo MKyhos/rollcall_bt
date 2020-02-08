@@ -1,29 +1,28 @@
-
-
 #' Scrape BT Roll Call Data
 #' 
 #' For a given time period, the roll call data from the German Parliament
 #' is scraped. Please be aware of the fact, that this is possible not before
-#' xxx.
-#' An implementation for detecting roll call votes from PDF files is currently
-#' under construction. Probably comming some day.
+#' 2013.
+#' 
+#' To do:
+#' - A handling for pdf only data is planned and might get implemented some day 
+#' (PRs welcome!).
+#' - Function is currently not optional regarding RAM management (everything 
+#' is done in memory). 
 #'
-#' @param start 
-#' @param end 
-#' @param limit 
-#' @param noFilterSet 
+#' @param start char: Start of the time period. Format: "%Y-%m-%d", eg. "2013-01-01".
+#' @param end  char: End of the time period. Format: "%Y-%m-%d".
+#' @param limit int: ...
+#' @param noFilterSet bool: ...
 #'
-#' @return
-#' @export
-#'
-#' @examples
-getDocs <- function(start, end, 
+#' @return Returns a tibble with nested columns, containing both meta data as
+#' well as voting data and the first page from the pdf document.
+getData <- function(start, end, 
                     limit = 100, 
                     noFilterSet = FALSE,
                     sleep = .8) {
   
   options(scipen = 999)
-  # Convert Time Inputs:
   startTime <- start %>%
     lubridate::as_datetime() %>%
     as.integer() 
@@ -33,35 +32,67 @@ getDocs <- function(start, end,
   startTime <- as.character(startTime * 1000)
   endTime   <- as.character(endTime * 1000)
   
-  # API Request:
-  result <- httr::GET(url = glue(
-    "https://www.bundestag.de/ajax/filterlist/de/parlament/plenum/abstimmung/liste/462112-462112/h_fe32507b06aea68a4083e6ae6fa00280?enddate={endTime}&endfield=date&limit={limit}&noFilterSet={noFilterSet}&startdate={startTime}&startfield=date"
-  )) %>%
+  # Inital API Request.
+  request_url <- "https://www.bundestag.de/ajax/filterlist/de/parlament/plenum/abstimmung/liste/462112-462112/h_fe32507b06aea68a4083e6ae6fa00280?enddate={endTime}&endfield=date&limit={limit}&noFilterSet={noFilterSet}&startdate={startTime}&startfield=date&offset={offset}" 
+  offset <- 0
+  hits_total <- httr::GET(url = glue::glue(request_url)) %>%
     httr::content() %>%
-    html_nodes("tr")
+    html_node("div") %>%
+    html_attr("data-hits") %>%
+    as.numeric()
   
-  desc <- result %>%
-    html_nodes("div") %>%
-    html_nodes("p") %>%
-    html_text() %>%
-    tibble(date = stringr::str_extract(., "\\d{2}\\.\\d{2}\\.\\d{4}") %>%
-             lubridate::dmy(),
-           title = stringr::str_extract(., "(?<=:\\s).*$")) %>%
-    select(title, date) %>%
-    bind_cols(.,
-              result %>% 
-                html_nodes("a") %>%
-                html_attr("href") %>%
-                tibble(links = .) %>%
-                mutate(type  = case_when(stringr::str_detect(links, ".*\\.pdf$") ~ "url_pdf",
-                                         TRUE ~ "url_xlsx"),
-                       links = paste0("https://www.bundestag.de", links)) %>%
-                pivot_wider(names_from  = type, 
-                            values_from = links,
-                            values_fn   = list(links = list)) %>%
-                unnest(cols = c(url_pdf, url_xlsx))) 
+  offset_breaks <- seq(floor(hits_total / 30)) - 1
+  desc <- list() # Init data container list.
   
-  # Download documents
+  for (i in seq_along(offset_breaks)) {
+    # Set current offest
+    offset <- offset_breaks[i] * 30
+    content <- httr::GET(url = glue::glue(request_url)) %>%
+      httr::content() 
+    nodeset <- content %>%
+      html_nodes("tr")
+    desc[[i]] <- content %>%
+      html_nodes("tr") %>%
+      map(.f = function(d) {
+        meta <- html_nodes(d, "div") %>% # Extract meta information
+          html_nodes("p") %>%
+          html_text() %>%
+          tibble(date = stringr::str_extract(., "\\d{2}\\.\\d{2}\\.\\d{4}") %>%
+                   lubridate::dmy(),
+                 title = stringr::str_extract(., "(?<=:\\s).*$")) %>%
+          select(title, date)
+        urls <- html_nodes(d, "a") %>% # Extract urls
+          html_attr("href") %>%
+          tibble(links = .) %>%
+          mutate(
+            type = case_when(
+              stringr::str_detect(links, ".*\\.pdf$") ~ "url_pdf",
+              TRUE ~ "url_xlsx"),
+            links = paste0("https://www.bundestag.de", links)
+          ) %>%
+          pivot_wider(names_from  = type,
+                      values_from = links,
+                      values_fn   = list(links = list)) %>%
+          unnest(cols = c(url_pdf, url_xlsx))
+        list(meta = meta, urls = urls) # Return results
+      }) %>%
+      map_df(bind_cols) %>%
+      select(-links)
+  }
+  
+  desc <- bind_rows(desc)
+  
+  ## Download documents ---
+  n_docs <- nrow(desc)
+  
+  # Ask for permission
+  message(paste0("Number of datasets: ", n_docs))
+  message("Proceed to download files? (y/n)")
+  input <- readline(prompt = "~% ")
+  
+  if (input != "y" | input != "Y") { # Abort mechanism.
+    return(NULL)
+  }
    
   # Allocate lists
   ls_pdf  <- list()
@@ -111,9 +142,7 @@ getDocs <- function(start, end,
   }
   
   # Return result object (tibble with nested columns).
-  result <- mutate(desc,
-                   txt = ls_pdf,
-                   dta = ls_xlsx)
+  result <- mutate(desc, txt = ls_pdf, dta = ls_xlsx)
   result
 }
 
