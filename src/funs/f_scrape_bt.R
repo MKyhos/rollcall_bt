@@ -21,15 +21,17 @@ getDocs <- function(start, end,
                     limit = 100, 
                     noFilterSet = FALSE,
                     sleep = .8) {
+  
+  options(scipen = 999)
   # Convert Time Inputs:
   startTime <- start %>%
     lubridate::as_datetime() %>%
     as.integer() 
   endTime <- end %>%
     lubridate::as_datetime() %>%
-    as.integer()
-  startTime <- startTime * 1000
-  endTime   <- endTime * 1000
+    as.integer() 
+  startTime <- as.character(startTime * 1000)
+  endTime   <- as.character(endTime * 1000)
   
   # API Request:
   result <- httr::GET(url = glue(
@@ -60,7 +62,7 @@ getDocs <- function(start, end,
                 unnest(cols = c(url_pdf, url_xlsx))) 
   
   # Download documents
-  
+   
   # Allocate lists
   ls_pdf  <- list()
   ls_xlsx <- list()
@@ -69,14 +71,14 @@ getDocs <- function(start, end,
   
   for (i in 1:nrow(desc)) {
     # Init Url paths
-    url_pdf <- desc$url_pdf[i]
-    url_xls <- desc$url_xlsx[i]
+    q_url_pdf <- desc$url_pdf[i]
+    q_url_xls <- desc$url_xlsx[i]
     
     tryCatch( # Retrieve pdf.
       {
         ls_pdf[[i]] <- tibble(
-          txt = map_chr(
-            .x = strsplit(pdftools::pdf_text(url_pdf)[[1]], "\\n")[[1]], 
+          txt  = map_chr(
+            .x = strsplit(pdftools::pdf_text(q_url_pdf)[[1]], "\\n")[[1]], 
             .f = trimws
           )
         )
@@ -87,16 +89,18 @@ getDocs <- function(start, end,
     
     tryCatch( # Retrieve xlsx.
       {
-        if (stringr::str_detect(url_xls, "\\.xlsx$")) {
-          httr::GET(url_xls, 
+        if (stringr::str_detect(q_url_xls, "\\.xlsx$")) {
+          httr::GET(q_url_xls, 
                     httr::write_disk(tf <- tempfile(fileext = ".xlsx")),
                     invisible())
           ls_xlsx[[i]] <- readxl::read_xlsx(tf)
         } else {
-          httr::GET(url_xls, 
+          httr::GET(q_url_xls, 
                     httr::write_disk(tf <- tempfile(fileext = ".xls")),
                     invisible())
-          ls_xlsx[[i]] <- readxl::read_xls(tf)
+          ls_xlsx[[i]] <- gdata::read.xls(tf, encoding = "latin1") %>%
+            as_tibble() %>%
+            mutate_if(is.factor, as.character)
         }
       },
       error   = function(cond) return(NULL),
