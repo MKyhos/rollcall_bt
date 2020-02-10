@@ -34,20 +34,27 @@
                dta_vote_character, 
                overwrite = TRUE,
                field.types = c(
-                 "vote_date" = "date",
-                 "cab_start" = "date",
-                 "cab_end" = "date",
+                 "vote_date"     = "date",
+                 "cab_start"     = "date",
+                 "cab_end"       = "date",
                  "elecper_start" = "date",
-                 "elecper_end" = "date"))
+                 "elecper_end"   = "date"))
     dbWriteTable(con, "vote_behaviour",
                  dta_vote_behavior,
                  field.types = c("vote_date" = "date"))
     dbWriteTable(con, "member",
                  dta_mp_character,
                  field.types = c(
-                   "date_birth" = "date",
+                   "date_birth"    = "date",
                    "mandate_start" = "date",
-                   "mandate_end" = "date",
-                   "spell_start" = "date",
-                   "spell_end" = "date"
+                   "mandate_end"   = "date",
+                   "spell_start"   = "date",
+                   "spell_end"     = "date"
                  ))
+                  
+    
+    
+    
+    
+    
+    
